@@ -140,6 +140,27 @@ class vLLMRollout(BaseRollout):
         for k in config.keys():
             if hasattr(SamplingParams(), str(k)):
                 kwargs[k] = config.get(k)
+                
+        # add logits_processors
+        if 'logits_processors' in config:
+            logits_processors_config = config.logits_processors
+            import importlib.util, os
+            file_path = logits_processors_config.get("path")
+            if not file_path:
+                return None
+            if not os.path.exists(file_path):
+                raise FileNotFoundError(f"Logits processors file '{file_path}' not found.")
+            spec = importlib.util.spec_from_file_location("custom_logits_module", file_path)
+            module = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(module)
+            except Exception as e:
+                raise RuntimeError(f"Error loading module from '{file_path}': {e}")
+            processors_name = logits_processors_config.get("name")
+            if not hasattr(module, processors_name):
+                raise AttributeError(f"Logits processors '{processors_name}' not found in '{file_path}'.")
+            print(f"using logits processors '{processors_name}' from '{file_path}'")
+            kwargs['logits_processors'] = getattr(module, processors_name)
 
         print(f"kwargs: {kwargs}")
         self.sampling_params = SamplingParams(**kwargs)
@@ -223,10 +244,14 @@ class vLLMRollout(BaseRollout):
                 'top_p': self.config.val_kwargs.top_p,
                 'temperature': self.config.val_kwargs.temperature,
                 'n': 1,  # if validate, already repeat in ray_trainer
+                'logits_processors': None,
             }
 
         # users can customize different sampling_params at different run
         with self.update_sampling_params(**kwargs):
+            # TODO: to check if the log_probs is changed
+            # assert bool(self.sampling_params.logits_processors)^is_validate, \
+            #     "logits_processors and logprobs cannot be set at the same time"
             outputs = self.inference_engine.generate(
                 prompts=vllm_inputs,  # because we have already convert it to prompt token id
                 sampling_params=self.sampling_params,

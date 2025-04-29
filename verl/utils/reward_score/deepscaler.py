@@ -11,12 +11,51 @@ Global variables for Deepscaler repo.
 # Reward function constants
 THOUGHT_DELIMITER_START = "<think>"
 THOUGHT_DELIMITER_END = "</think>"
+# NO_THINK_PROMPT = "...\nOkay, I think I have finished thinking.\n</think>\n\n"
+
+# NO_THINK_PROMPT = "...\n</think>\n\n"
+NO_THINK_PROMPT = "</think>\n\n"
 
 def compute_score(data_source: str, 
                   solution_str: str, 
                   ground_truth: str, 
                   extra_info=None) -> float:
     # format reward: </think>
+    k = 0.
+    # if NO_THINK_PROMPT in solution_str:
+    if solution_str.startswith(NO_THINK_PROMPT):
+        # print("k=1")
+        k = 1.
+    if THOUGHT_DELIMITER_END not in solution_str:
+        return 0.
+    else:
+        solution_str = solution_str.split(THOUGHT_DELIMITER_END)[1]
+    
+    # format reward: \\boxed
+    try:
+        string_in_last_boxed = last_boxed_only_string(solution_str)
+        if string_in_last_boxed is None:
+            return 0. - k
+    except Exception as e:
+        print(e)
+        return 0. - k
+        
+    # result reward
+    ground_truth_boxed = "\\boxed{" + ground_truth + "}" # Wrap the ground truth in \boxed{} format for verification
+    try:
+        ret_score, _ = verify_func([ground_truth_boxed], [solution_str])
+        return ret_score + k if ret_score > 0.5 else ret_score - k
+    except Exception as e:
+        print(e)
+    return 0.
+
+
+def val_compute_score(data_source: str, 
+                  solution_str: str, 
+                  ground_truth: str, 
+                  extra_info=None) -> float:
+    # format reward: </think>
+    
     if THOUGHT_DELIMITER_END not in solution_str:
         return 0.
     else:
@@ -39,6 +78,7 @@ def compute_score(data_source: str,
     except Exception as e:
         print(e)
     return 0.
+
 
 # string normalization from https://github.com/EleutherAI/lm-evaluation-harness/blob/master/lm_eval/tasks/hendrycks_math.py
 def is_equiv(str1, str2, verbose=False):
