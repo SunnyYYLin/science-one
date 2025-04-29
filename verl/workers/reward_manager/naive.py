@@ -15,7 +15,7 @@
 from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 import torch
-
+NO_THINK_PROMPT = "</think>\n\n"
 
 class NaiveRewardManager:
     """The reward manager.
@@ -72,6 +72,9 @@ class NaiveRewardManager:
         reward_tensor = torch.zeros_like(data.batch['responses'], dtype=torch.float32)
 
         already_print_data_sources = {}
+
+        think_flags = []
+        acc_flags = []
 
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
