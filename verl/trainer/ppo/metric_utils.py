@@ -65,6 +65,31 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
     valid_adv = torch.masked_select(advantages, response_mask)
     valid_returns = torch.masked_select(returns, response_mask)
 
+     # ==== think/no-think 分组统计 ====
+    think_flags = torch.tensor(batch.batch['think_flags'], device=sequence_score.device).bool()
+    is_correct_flags = torch.tensor(batch.batch['is_correct_flags'], device=sequence_score.device).bool()
+
+    total_samples = think_flags.size(0)
+
+    num_think = think_flags.sum()
+    num_no_think = total_samples - num_think
+
+    think_ratio = num_think.float() / total_samples if total_samples > 0 else torch.tensor(0.0, device=sequence_score.device)
+    no_think_ratio = num_no_think.float() / total_samples if total_samples > 0 else torch.tensor(0.0, device=sequence_score.device)
+
+    think_indices = think_flags.nonzero(as_tuple=True)[0]
+    no_think_indices = (~think_flags).nonzero(as_tuple=True)[0]
+
+    avg_response_length_think = response_length[think_indices].mean() if num_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+    avg_response_length_no_think = response_length[no_think_indices].mean() if num_no_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+
+    avg_score_think = sequence_score[think_indices].mean() if num_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+    avg_score_no_think = sequence_score[no_think_indices].mean() if num_no_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+
+    acc_think = is_correct_flags[think_indices].float().mean() if num_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+    acc_no_think = is_correct_flags[no_think_indices].float().mean() if num_no_think > 0 else torch.tensor(0.0, device=sequence_score.device)
+
+
     if use_critic:
         values = batch.batch['values']
         valid_values = torch.masked_select(values, response_mask)
@@ -100,6 +125,8 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             torch.max(valid_returns).detach().item(),
         'critic/returns/min':
             torch.min(valid_returns).detach().item(),
+        # accuracy
+        'critic/accuracy': is_correct_flags.float().mean().detach().item(),
         **({
             # values
             'critic/values/mean': torch.mean(valid_values).detach().item(),
@@ -127,6 +154,16 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
             torch.min(prompt_length).detach().item(),
         'prompt_length/clip_ratio':
             torch.mean(torch.eq(prompt_length, max_prompt_length).float()).detach().item(),
+
+        # think/no-think 分组统计
+        'think/think_ratio': think_ratio.detach().item(),
+        'think/nothink_ratio': no_think_ratio.detach().item(),
+        'think/think_avg_response_length': avg_response_length_think.detach().item(),
+        'think/nothink_avg_response_length': avg_response_length_no_think.detach().item(),
+        'think/think_avg_score': avg_score_think.detach().item(),
+        'think/nothink_avg_score': avg_score_no_think.detach().item(),
+        'think/think_accuracy': acc_think.detach().item(),
+        'think/nothink_accuracy': acc_no_think.detach().item(),
     }
     return metrics
 
