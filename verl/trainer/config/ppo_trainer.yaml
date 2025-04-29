@@ -164,7 +164,8 @@ reward_model:
 
 custom_reward_function:
   path: null
-  name: compute_score
+  train_name: compute_score
+  val_name: val_compute_score
 
 algorithm:
   gamma: 1.0

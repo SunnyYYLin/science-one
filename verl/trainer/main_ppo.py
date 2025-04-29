@@ -39,14 +39,17 @@ def get_custom_reward_fn(config):
     except Exception as e:
         raise RuntimeError(f"Error loading module from '{file_path}': {e}")
 
-    function_name = reward_fn_config.get("name")
+    train_function_name = reward_fn_config.get("train_name")
+    if not hasattr(module, train_function_name):
+        raise AttributeError(f"Reward function '{train_function_name}' not found in '{file_path}'.")
+    print(f"using customized reward function '{train_function_name}' from '{file_path}'")
 
-    if not hasattr(module, function_name):
-        raise AttributeError(f"Reward function '{function_name}' not found in '{file_path}'.")
+    val_function_name = reward_fn_config.get("val_name")
+    if not hasattr(module, val_function_name):
+        raise AttributeError(f"Reward function '{val_function_name}' not found in '{file_path}'.")
+    print(f"using customized reward function '{val_function_name}' from '{file_path}'")
 
-    print(f"using customized reward function '{function_name}' from '{file_path}'")
-
-    return getattr(module, function_name)
+    return getattr(module, train_function_name), getattr(module, val_function_name)
 
 
 @hydra.main(config_path='config', config_name='ppo_trainer', version_base=None)
@@ -151,11 +154,12 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        compute_score = get_custom_reward_fn(config)
-        reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=0, compute_score=compute_score)
+        train_compute_score, val_compute_score = get_custom_reward_fn(config)
+        
+        reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=0, compute_score=train_compute_score)
 
         # Note that we always use function-based RM for validation
-        val_reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=1, compute_score=compute_score)
+        val_reward_fn = reward_manager_cls(tokenizer=tokenizer, num_examine=1, compute_score=val_compute_score)
 
         resource_pool_manager = ResourcePoolManager(resource_pool_spec=resource_pool_spec, mapping=mapping)
 

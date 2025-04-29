@@ -15,7 +15,7 @@
 from verl import DataProto
 from verl.utils.reward_score import _default_compute_score
 import torch
-
+NO_THINK_PROMPT = "</think>\n\n"
 
 class NaiveRewardManager:
     """The reward manager.
@@ -73,6 +73,9 @@ class NaiveRewardManager:
 
         already_print_data_sources = {}
 
+        think_flags = []
+        acc_flags = []
+
         for i in range(len(data)):
             data_item = data[i]  # DataProtoItem
 
@@ -108,11 +111,19 @@ class NaiveRewardManager:
             if data_source not in already_print_data_sources:
                 already_print_data_sources[data_source] = 0
 
-            if already_print_data_sources[data_source] < self.num_examine:
-                already_print_data_sources[data_source] += 1
-                print("[prompt]", prompt_str)
-                print("[response]", response_str)
-                print("[ground_truth]", ground_truth)
-                print("[score]", score)
+            # ========= 【新增】同时统计 think_flag 和 acc =========
+            # 是否有 NO_THINK_PROMPT
+            think_flag = 0 if response_str.startswith(NO_THINK_PROMPT) else 1
+            think_flags.append(think_flag)
+
+            # 是否答对 (acc)
+            acc = 1 if score > 0.5 else 0
+            acc_flags.append(acc)
+
+        # ========= 【新增】写回 batch =========
+        device = reward_tensor.device
+        data.batch['think_flags'] = torch.tensor(think_flags, dtype=torch.float32, device=device)
+        data.batch['is_correct_flags'] = torch.tensor(acc_flags, dtype=torch.float32, device=device)
+
 
         return reward_tensor
